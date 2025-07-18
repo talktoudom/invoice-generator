@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice Generator - CodeByUdom Solutions</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-6">
+  <div class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-lg shadow-lg">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">CodeByUdom Solutions</h1>
+        <p class="text-gray-400">Professional Invoice Generator</p>
+      </div>
+      <div>
+        <input type="file" id="logoInput" accept="image/*" class="mb-2" />
+        <div id="logoPreview" class="w-24 h-24 border rounded bg-white flex items-center justify-center overflow-hidden">
+          <span class="text-gray-600">Logo</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-6">
+      <label for="businessName" class="block font-semibold mb-1">Business Name</label>
+      <input type="text" id="businessName" class="w-full p-2 rounded bg-gray-700 border border-gray-600" placeholder="e.g. CodeByUdom Solutions">
+      <p id="nameError" class="text-red-500 text-sm hidden">Please enter a valid business name.</p>
+    </div>
+
+    <div class="mb-6">
+      <label for="currency" class="block font-semibold mb-1">Currency</label>
+      <select id="currency" class="w-full p-2 rounded bg-gray-700 border border-gray-600">
+        <option value="₦">NGN (₦)</option>
+        <option value="$">USD ($)</option>
+        <option value="€">EUR (€)</option>
+        <option value="£">GBP (£)</option>
+      </select>
+    </div>
+
+    <div id="invoiceItems" class="space-y-4"></div>
+    <button onclick="addItem()" class="mt-4 bg-green-600 px-4 py-2 rounded hover:bg-green-700">Add Item</button>
+
+    <div class="mt-6">
+      <label for="vat" class="block font-semibold mb-1">VAT (%)</label>
+      <input type="number" id="vat" class="w-full p-2 rounded bg-gray-700 border border-gray-600" value="0">
+    </div>
+
+    <div class="mt-6 text-right">
+      <p class="text-lg">Subtotal: <span id="subtotal"></span></p>
+      <p class="text-lg">VAT: <span id="vatAmount"></span></p>
+      <p class="text-2xl font-bold">Total: <span id="total"></span></p>
+    </div>
+
+    <div class="mt-6 flex space-x-4">
+      <button onclick="downloadPDF()" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Download PDF</button>
+      <button onclick="clearInvoice()" class="bg-red-600 px-4 py-2 rounded hover:bg-red-700">Clear Invoice</button>
+    </div>
+  </div>
+
+  <script>
+    const invoiceItems = document.getElementById("invoiceItems");
+    const currencySelect = document.getElementById("currency");
+    const subtotalEl = document.getElementById("subtotal");
+    const totalEl = document.getElementById("total");
+    const vatInput = document.getElementById("vat");
+    const vatAmountEl = document.getElementById("vatAmount");
+
+    function loadStoredInvoice() {
+      const stored = JSON.parse(localStorage.getItem("invoiceData"));
+      if (stored) {
+        document.getElementById("businessName").value = stored.businessName || "";
+        currencySelect.value = stored.currency || "₦";
+        vatInput.value = stored.vat || 0;
+        stored.items.forEach(item => addItem(item.name, item.price));
+      }
+    }
+
+    function saveInvoiceData() {
+      const data = {
+        businessName: document.getElementById("businessName").value,
+        currency: currencySelect.value,
+        vat: vatInput.value,
+        items: [...document.querySelectorAll(".item")].map(el => ({
+          name: el.querySelector(".name").value,
+          price: el.querySelector(".price").value
+        }))
+      };
+      localStorage.setItem("invoiceData", JSON.stringify(data));
+    }
+
+    function addItem(name = "", price = "") {
+      const div = document.createElement("div");
+      div.className = "item flex space-x-4 items-center";
+      div.innerHTML = `
+        <input type="text" class="name flex-1 p-2 rounded bg-gray-700 border border-gray-600" placeholder="Item name" value="${name}">
+        <input type="number" class="price w-32 p-2 rounded bg-gray-700 border border-gray-600" placeholder="Price" value="${price}" min="0">
+        <button onclick="this.parentElement.remove(); updateTotal(); saveInvoiceData();" class="text-red-400">✖</button>
+      `;
+      div.querySelector(".name").addEventListener("input", saveInvoiceData);
+      div.querySelector(".price").addEventListener("input", () => {
+        updateTotal();
+        saveInvoiceData();
+      });
+      invoiceItems.appendChild(div);
+      updateTotal();
+      saveInvoiceData();
+    }
+
+    function updateTotal() {
+      const currency = currencySelect.value;
+      let subtotal = 0;
+      document.querySelectorAll(".price").forEach(input => {
+        const val = parseFloat(input.value);
+        if (!isNaN(val)) subtotal += val;
+      });
+      const vatRate = parseFloat(vatInput.value) || 0;
+      const vatAmount = subtotal * (vatRate / 100);
+      const total = subtotal + vatAmount;
+      subtotalEl.textContent = `${currency}${subtotal.toFixed(2)}`;
+      vatAmountEl.textContent = `${currency}${vatAmount.toFixed(2)}`;
+      totalEl.textContent = `${currency}${total.toFixed(2)}`;
+    }
+
+    function clearInvoice() {
+      localStorage.removeItem("invoiceData");
+      document.getElementById("businessName").value = "";
+      invoiceItems.innerHTML = "";
+      addItem();
+      updateTotal();
+    }
+
+    function downloadPDF() {
+      const opt = {
+        margin: 0.5,
+        filename: 'invoice.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      };
+      html2pdf().from(document.body).set(opt).save();
+    }
+
+    document.getElementById("businessName").addEventListener("input", saveInvoiceData);
+    currencySelect.addEventListener("change", () => {
+      updateTotal();
+      saveInvoiceData();
+    });
+    vatInput.addEventListener("input", () => {
+      updateTotal();
+      saveInvoiceData();
+    });
+
+    document.getElementById("logoInput").addEventListener("change", function() {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const img = new Image();
+        img.src = e.target.result;
+        img.className = "w-full h-full object-contain";
+        const preview = document.getElementById("logoPreview");
+        preview.innerHTML = "";
+        preview.appendChild(img);
+      };
+      reader.readAsDataURL(this.files[0]);
+    });
+
+    loadStoredInvoice();
+    updateTotal();
+    if (!document.querySelector(".item")) addItem();
+  </script>
+</body>
+</html>
